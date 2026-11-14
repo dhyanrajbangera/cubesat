@@ -1,211 +1,110 @@
-ESP32 CubeSat Telemetry System
+# ESP32 CubeSat Telemetry System
 
-An ESP32-based CubeSat-inspired telemetry prototype featuring real-time sensor acquisition, onboard OLED monitoring, and a wireless web dashboard.
+[![Build firmware](../../actions/workflows/build.yml/badge.svg)](../../actions/workflows/build.yml)
+![Platform: ESP32](https://img.shields.io/badge/platform-ESP32-blue)
+![Framework: Arduino](https://img.shields.io/badge/framework-Arduino-00979D)
+![Built with PlatformIO](https://img.shields.io/badge/built%20with-PlatformIO-orange)
+![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-brightgreen)
 
-The system integrates an inertial measurement unit (IMU), barometric pressure sensor, and GPS receiver to collect and display motion, environmental, and location data.
+An ESP32-based CubeSat flight-computer prototype that reads motion, environment and GPS sensors, shows live data on an OLED, and serves a **Mission Control web dashboard** over Wi-Fi. No cloud account or internet connection is needed.
 
-Overview
+<!-- Add a photo of the build and a dashboard screenshot here:
+![Dashboard](docs/images/dashboard.png) -->
 
-This project explores embedded telemetry and remote monitoring through a compact hardware prototype.
+## Features
 
-An ESP32 collects sensor data, processes orientation measurements, and makes telemetry available through a local Wi-Fi network. Readings are presented on a 128 × 64 OLED display and a browser-based dashboard.
+- **Attitude estimation:** roll and pitch from an MPU-series IMU using a complementary filter (gyro + accelerometer).
+- **Environment sensing:** temperature, pressure and humidity from a BMP280/BME280 (auto-detected), with a DHT11 as fallback.
+- **GPS:** position, altitude, speed and satellite count via TinyGPS++, with fix-age validation.
+- **Live OLED display:** animated 3D cube boot screen, then live readings and the dashboard address.
+- **Mission Control dashboard:** attitude/3D cube view, roll/pitch and temperature history charts, GPS map and trail, system status and mission summary.
+- **Wi-Fi setup page:** join your router from a phone; the credentials are stored on the ESP32. The `CubeSat-Lab` access point stays available as a backup.
+- **JSON API:** `/api/telemetry` and `/api/history` (last 15 minutes, 1 sample per second).
+- **Sensor hot-plug:** missing sensors are re-detected every 10 seconds.
+- **Audio cues:** non-blocking buzzer melodies for boot, Wi-Fi connected and GPS fix.
 
-Project type: Embedded Systems / Aerospace-inspired Prototype
-Controller: ESP32 DevKit V1
-Firmware: C++ using Arduino Framework
-Communication: SPI, I²C, UART, Wi-Fi
-Telemetry format: JSON
+## Hardware
 
-Key Features
+| Part | Purpose |
+|------|---------|
+| ESP32 dev board (`esp32dev`) | Main computer |
+| SSD1306 128×64 OLED (SPI) | Local display |
+| MPU-6500/9250/9255 IMU (I²C) | Accelerometer and gyro |
+| BMP280 or BME280 (I²C) | Pressure, temperature (and humidity on BME280) |
+| DHT11 | Backup temperature and humidity |
+| NMEA GPS module, 9600 baud | Position |
+| Passive buzzer | Sound alerts |
 
-- Real-time accelerometer and gyroscope measurements.
-- Roll and pitch estimation using a complementary filter.
-- Barometric pressure and temperature monitoring.
-- Optional humidity monitoring with BME280.
-- GPS location, altitude, speed, and satellite information.
-- SSD1306 OLED telemetry display.
-- ESP32-hosted wireless access point.
-- Browser-based live monitoring dashboard.
-- JSON telemetry endpoint.
-- Live sensor charts and session CSV export.
+Pin mapping and wiring notes are in [docs/hardware.md](docs/hardware.md).
 
-System Architecture
+## Getting started
 
-The system consists of four main sensor and display interfaces connected to the ESP32.
+1. Install [PlatformIO](https://platformio.org/install) (VS Code extension or CLI).
+2. Clone and build:
+   ```bash
+   git clone https://github.com/dhyanrajbangera/cubesat.git
+   cd cubesat
+   pio run
+   ```
+3. Connect the ESP32 by USB and upload, then open the serial monitor:
+   ```bash
+   pio run -t upload
+   pio device monitor
+   ```
+4. Connect your phone or laptop to the Wi-Fi network **CubeSat-Lab** and open **http://192.168.4.1**.
 
-Module| Interface| Purpose
-MPU-6500 / MPU-9250| I²C| Motion and orientation
-BMP280 / BME280| I²C| Environmental measurements
-NEO-6M GPS| UART| Position and speed
-SSD1306 OLED| SPI| Onboard telemetry display
+> The default access-point password is defined in `src/main.cpp`. **Change it before deploying** (see [Security](#security)).
 
-The ESP32 processes sensor measurements and serves the web dashboard over its own Wi-Fi network.
+### Joining your home or lab router
 
-Hardware Requirements
+Open `http://192.168.4.1/wifi`, enter your 2.4 GHz network name and password, and save. The OLED then shows the new IP address; open it from a device on the same network.
 
-Component| Quantity
-ESP32 DevKit V1| 1
-SSD1306 128 × 64 SPI OLED| 1
-MPU-6500 / MPU-9250 IMU| 1
-BMP280 / BME280 barometer| 1
-NEO-6M GPS module| 1
-Jumper wires| As required
-Breadboard| 1
-USB cable| 1
+## Repository layout
 
-Pin Configuration
+```
+├── src/main.cpp          Firmware: sensors, filter, web server, OLED, sound
+├── include/dashboard.h   Mission Control web UI (embedded in flash)
+├── include/wifi_setup.h  Wi-Fi setup web page
+├── docs/                 Hardware pinout and API reference
+├── platformio.ini        Board, libraries, build settings
+└── .github/workflows/    CI: builds the firmware on every push
+```
 
-OLED — SPI
+## API
 
-OLED pin| ESP32 GPIO
-GND| GND
-VCC| 3V3
-D0 / SCLK| 18
-D1 / MOSI| 23
-RES| 26
-DC| 27
-CS| 25
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Mission Control dashboard |
+| `GET /wifi` | Wi-Fi setup page |
+| `GET /api/telemetry` | Current readings as JSON |
+| `GET /api/history` | Up to 900 one-second samples (roll, pitch, temp, pressure) |
+| `GET /api/network` | Wi-Fi connection status |
 
-IMU — I²C
+Full field descriptions: [docs/api.md](docs/api.md).
 
-IMU pin| ESP32 GPIO
-VCC| 3V3
-GND| GND
-SDA| 21
-SCL| 22
-AD0| GND
-NCS| 3V3
+## Security
 
-Barometer — I²C
+This project is intended for **trusted local networks**.
 
-Sensor pin| ESP32 GPIO
-VCC| 3V3
-GND| GND
-SDA| 21
-SCL| 22
-CSB| 3V3
-SDO| GND
+- The dashboard uses plain HTTP with no login. Anyone on the same network, or with the backup access-point password, can view it.
+- Do not expose the device to the internet or enable port forwarding.
+- Change the default `CubeSat-Lab` password before sharing the device.
 
-GPS — UART
+## Roadmap
 
-GPS pin| ESP32 GPIO
-VCC| Verify module requirements
-GND| GND
-TX| 32
-RX| Not connected
+- [ ] SD-card or flash data logging
+- [ ] Magnetometer heading
+- [ ] Radio downlink (LoRa)
+- [ ] Unit tests for the filter and JSON output
 
-The IMU and barometer share the same I²C bus.
+## Contributing
 
-Software Requirements
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- Arduino IDE
-- ESP32 Arduino board package
-- Adafruit SSD1306
-- Adafruit GFX Library
-- Adafruit BMP280 Library
-- Adafruit BME280 Library
-- TinyGPSPlus
+## License
 
-Firmware Setup
+Released under the [Mozilla Public License 2.0](LICENSE).
 
-1. Install Arduino IDE.
-2. Install the ESP32 board package.
-3. Install the required libraries.
-4. Open the firmware sketch.
-5. Configure the local Wi-Fi access point settings.
-6. Select the ESP32 DevKit board and correct serial port.
-7. Compile and upload the firmware.
-8. Open Serial Monitor at 115200 baud.
+## Author
 
-Keep your actual Wi-Fi configuration in a local, untracked configuration file. Do not commit real credentials.
-
-Accessing the Dashboard
-
-After the ESP32 starts:
-
-1. Connect your phone or computer to the configured CubeSat Wi-Fi network.
-2. Open a browser.
-3. Visit "http://192.168.4.1".
-
-The browser dashboard provides live sensor readings, orientation visualization, telemetry history, and session CSV export.
-
-The dashboard is hosted directly by the ESP32 and does not require an internet connection.
-
-Telemetry API
-
-The firmware exposes a JSON endpoint:
-
-"http://192.168.4.1/api/telemetry"
-
-Example response:
-
-{
-  "uptime": 120,
-  "imu": true,
-  "baro": true,
-  "fix": true,
-  "ax": 0.02,
-  "ay": 0.01,
-  "az": 0.99,
-  "roll": 1.25,
-  "pitch": -0.52,
-  "temp": 28.5,
-  "pressure": 1008.4,
-  "lat": 12.9716,
-  "lon": 77.5946,
-  "alt": 920.5,
-  "speed": 0.0,
-  "sats": 8
-}
-
-Values are illustrative, not actual sensor measurements. Additional fields include gyroscope readings, humidity, and GPS processing information.
-
-Operating Principle
-
-1. Motion sensing
-
-The IMU measures acceleration and angular velocity across three axes.
-
-2. Orientation estimation
-
-A complementary filter combines accelerometer-derived angles with gyroscope integration to estimate roll and pitch.
-
-3. Environmental sensing
-
-The BMP280 or BME280 measures atmospheric pressure and temperature. The BME280 additionally supports humidity measurement.
-
-4. GPS tracking
-
-The NEO-6M sends GPS data through UART. TinyGPSPlus parses location, altitude, speed, and satellite information.
-
-5. Wireless telemetry
-
-The ESP32 packages sensor readings into JSON and serves them through an HTTP endpoint for the web dashboard.
-
-Safety and Limitations
-
-- Use appropriate 3.3 V logic levels for ESP32 GPIO connections.
-- Never apply 5 V directly to ESP32 GPIO pins.
-- Verify the power requirements of individual sensor breakout boards.
-- GPS reception may require an unobstructed view of the sky.
-- Orientation estimates can be affected by acceleration and gyroscope drift.
-- This is an educational tabletop prototype, not flight-qualified or space-qualified hardware.
-
-Future Development
-
-- Magnetometer integration and heading estimation.
-- Improved sensor calibration and filtering.
-- SD card telemetry logging.
-- Battery voltage and power monitoring.
-- Live GPS mapping.
-- Cloud telemetry and MQTT integration.
-- Improved 3D attitude visualization.
-
-License
-
-Distributed under the Mozilla Public License 2.0. See "LICENSE" (LICENSE) for details.
-
----
-
-Developed by Dhyanraj Bangera
-Embedded Systems · Electronics · Aerospace-inspired Prototyping
+Made by **Dhyan**.
